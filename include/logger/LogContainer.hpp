@@ -18,6 +18,6 @@ public:
   ~LogContainer() = default;
 
   bool needToLog();
-  putLine(LogLine line);
+  void putLine(LogLine line);
   LogLine getLine();
 };
