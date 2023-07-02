@@ -4,8 +4,8 @@
 #include <sstream>
 
 #include <logger/LogContainer.hpp>
-#include <logger/LogWritter.hpp>
 #include <logger/LogFlags.hpp>
+#include <logger/LogWritter.hpp>
 
 class Logger {
 private:
@@ -20,7 +20,6 @@ public:
   Logger &operator<<(const LogType &type);
   Logger &operator<<(const logEndl &endl);
   template <typename T> Logger &operator<<(const T &message);
-  
 
   static LogContainer &getContainer();
   static void setWriter(std::unique_ptr<LogWritter> writer);

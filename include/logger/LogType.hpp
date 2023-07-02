@@ -1,5 +1,4 @@
-#ifndef __LOGTYPE_H__
-#define __LOGTYPE_H__
+#pragma once
 
 #include <ostream>
 
@@ -22,4 +21,3 @@ inline std::ostream &operator<<(std::ostream &os, const LogType &type) {
   }
   return os;
 }
-#endif // __LOGTYPE_H__
