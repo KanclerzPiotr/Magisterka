@@ -1,30 +1,18 @@
 #include <iostream>
 
-#include <logger/LogFileWriter.hpp>
-#include <logger/Logger.hpp>
+#include "algorithms/delta.hpp"
+#include <sycl/sycl.hpp>
+
 
 int main() {
 
-    std::unique_ptr<LogWritter> logFileWriter = std::make_unique<LogFileWriter>("logs.txt", Logger::getContainer());
-    Logger::setWriter(std::move(logFileWriter));
+    sycl::queue q{sycl::gpu_selector_v};
+    std::cout << q.get_device().get_info<sycl::info::device::name>() << std::endl;
 
+    containers::CSR csr{q, 5};
 
-    std::vector<std::thread> threads(50);
+    algorithms::deltaStepping(q, csr, 0, 5);
 
-    for(int i =0; i < 50; i ++) {
-        threads[i] = std::thread([i](){
-          Logger log;
-            for(int j = 0; j < 1000; j ++) {
-                log << LogType::INFO << "Hello from thread " << i << " " << j << logEndl();
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-        });
-    }
-
-    for(int i =0; i < 50; i ++) {
-        threads[i].join();
-    }
 
     return 0;
-
 }
