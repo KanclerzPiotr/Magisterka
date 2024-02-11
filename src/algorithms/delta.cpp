@@ -3,16 +3,30 @@
 #include <sycl/sycl.hpp>
 #include <oneapi/dpl/algorithm>
 #include <oneapi/dpl/execution>
+#include 
 
 namespace algorithms {
+
+    template <typename T>
+    bool atomic_fetch_min(sycl::atomic_ref<T, sycl::memory_order::relaxed, sycl::memory_scope::device> ref, T val) {
+        T old = ref.load();
+        while (val < old) {
+            if (ref.compare_exchange_weak(old, val)) {
+                return true;
+            }
+        }
+        return false;
+    }
 
     // vertex, value, delta, tent, buckets
     void relax(int vtx, float val, int d, float* t, int* b)
     {
-        if (t[vtx] == -1 || val < t[vtx])
+        if (val < t[vtx])
         {
-            b[vtx] = val/d;
-            t[vtx] = val;
+            sycl::atomic_ref<float, sycl::memory_order::relaxed, sycl::memory_scope::device> ref_t(t[vtx]);
+            sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device> ref_b(b[vtx]);
+            atomic_fetch_min(ref_t, val);    
+            atomic_fetch_min(ref_b, (int)val/d);
         }
     }
 
@@ -32,8 +46,8 @@ namespace algorithms {
 
         q.submit([&](sycl::handler& h) {
             h.parallel_for(size, [=](sycl::id<1> i) {
-                tent[i] = -1;
-                buckets[i] = -1;
+                tent[i] = std::numeric_limits<float>::max();
+                buckets[i] = std::numeric_limits<int>::max();
 
                 if(i == source) {
                     relax(i, 0, delta, tent, buckets);
@@ -43,24 +57,24 @@ namespace algorithms {
 
         while( !areAllBucketsEmpty(policy, buckets, size)) {
 
-            std::copy(policy, buckets, buckets + size, tempBuckets);
-            std::sort(policy, tempBuckets, tempBuckets + size);
-            auto end = std::unique(policy, tempBuckets, tempBuckets + size);
-            auto uniqueSize = std::distance(tempBuckets, end);
+            int bucket = *std::min_element(policy, buckets, buckets + size);
 
             q.submit([&](sycl::handler& h) {
                 h.parallel_for(size, [=](sycl::id<1> i) {
+                        if(buckets[i] == bucket) {
 
-                    for(int j = 0; j < uniqueSize; j++) {
-                        if(buckets[i] == tempBuckets[j] && buckets[i] != -1) {
-                            
-                            // relax all light edges
+                        for(int j = csr.row[i]; j < csr.row[i+1]; j++) {
+                            if (csr.val[j] < delta) { // light edge
+                                relax(csr.col[j], tent[i] + csr.val[j], delta, tent, buckets)
+                            }
                             
                         }
-                    }
+
+                        buckets[i] =    
+                        }
+                    });
                 });
-            });
-        }
+            };
         
         sycl::free(tent, q);
         sycl::free(buckets, q);
