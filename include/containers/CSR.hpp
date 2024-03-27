@@ -1,7 +1,9 @@
 #pragma once
 
 #include <sycl/sycl.hpp>
-#include <string>
+#include <string_view>
+#include "containers/AdjeacenacyMatrix.hpp"
+
 
 namespace containers {
 
@@ -10,12 +12,19 @@ struct CSR
     int* row;
     int* col;
     float* val;
-    int size;
+    int vertices;
+    int edges;
     sycl::queue& q;
     
-    CSR(sycl::queue& q, int size);
+    explicit CSR(sycl::queue& q);
     ~CSR();
-    void readFromFile(const std::string& filename);
+    void readFromFile(std::string_view filename);
+    void fromAdjeacenacyMatrix(const AdjeacenacyMatrix& matrix);
+    void print();
+
+private:
+
+    void allocateData();
 
     
 

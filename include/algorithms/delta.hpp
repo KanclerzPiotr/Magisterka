@@ -5,7 +5,7 @@
 
 namespace algorithms {
 
-    std::vector<float> deltaStepping(sycl::queue& q, containers::CSR& csr, int source, int delta) ;
+    std::vector<float> deltaStepping(sycl::queue& q, containers::CSR& csr, int source, int delta);
 
     void test(sycl::queue&q);
 } // namespace algorithms

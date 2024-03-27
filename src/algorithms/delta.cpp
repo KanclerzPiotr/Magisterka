@@ -3,20 +3,11 @@
 #include <sycl/sycl.hpp>
 #include <oneapi/dpl/algorithm>
 #include <oneapi/dpl/execution>
-#include 
-
+#include <iostream>
 namespace algorithms {
 
-    template <typename T>
-    bool atomic_fetch_min(sycl::atomic_ref<T, sycl::memory_order::relaxed, sycl::memory_scope::device> ref, T val) {
-        T old = ref.load();
-        while (val < old) {
-            if (ref.compare_exchange_weak(old, val)) {
-                return true;
-            }
-        }
-        return false;
-    }
+    constexpr int PUT_IN_R = std::numeric_limits<int>::max() - 2;
+    constexpr int FULLY_RELAXED = std::numeric_limits<int>::max() - 1;
 
     // vertex, value, delta, tent, buckets
     void relax(int vtx, float val, int d, float* t, int* b)
@@ -25,24 +16,41 @@ namespace algorithms {
         {
             sycl::atomic_ref<float, sycl::memory_order::relaxed, sycl::memory_scope::device> ref_t(t[vtx]);
             sycl::atomic_ref<int, sycl::memory_order::relaxed, sycl::memory_scope::device> ref_b(b[vtx]);
-            atomic_fetch_min(ref_t, val);    
-            atomic_fetch_min(ref_b, (int)val/d);
+            ref_b.fetch_min((int)val/d);
+            ref_t.fetch_min(val);
         }
     }
 
     bool areAllBucketsEmpty(auto policy, int* buckets, int size) {
-        return std::all_of(policy, buckets, buckets + size, [](int i) { return i == -1; });
+        return std::all_of(policy, buckets, buckets + size, [](int i) { return i == FULLY_RELAXED; });
+    }
+
+    void relaxLightEdges(sycl::id<1> i, int delta, float* tent, int* buckets, int* row, int* col, float* val) {
+        for(int j = row[i]; j < row[i+1]; j++) {
+            if (val[j] < delta) { // light edge
+                relax(col[j], tent[i] + val[j], delta, tent, buckets);
+            }
+        }
+    }
+    
+    void relaxHeavyEdges(sycl::id<1> i, int delta, float* tent, int* buckets, int* row, int* col, float* val) {
+        for(int j = row[i]; j < row[i+1]; j++) {
+            if (val[j] >= delta) { // heavy edge
+                relax(col[j], tent[i] + val[j], delta, tent, buckets);
+            }
+        }
     }
 
     std::vector<float> deltaStepping(sycl::queue& q, containers::CSR& csr, int source, int delta) {
 // 
         auto policy = oneapi::dpl::execution::make_device_policy(q);
-        auto size = csr.size;
+        auto size = csr.vertices;
+        auto row = csr.row;
+        auto col = csr.col;
+        auto val = csr.val;
         float* tent = sycl::malloc_shared<float>(size, q);
         int * buckets = sycl::malloc_shared<int>(size, q);
-        int * tempBuckets = sycl::malloc_shared<int>(size, q);
-
-
+        int x;
 
         q.submit([&](sycl::handler& h) {
             h.parallel_for(size, [=](sycl::id<1> i) {
@@ -53,48 +61,52 @@ namespace algorithms {
                     relax(i, 0, delta, tent, buckets);
                 }
             });
-        });
+        }).wait();
 
         while( !areAllBucketsEmpty(policy, buckets, size)) {
+            
+            auto bucket = std::min_element(policy, buckets, buckets + size);
+            int bucketValue;
+            int newBucketValue;
+            q.copy<int>(bucket, &bucketValue, 1).wait();
+            // while i'th bucket is not empty
+            do {
+                q.submit([&](sycl::handler& h) {
+                    h.parallel_for(size, [=](sycl::id<1> i) {
+                        if(buckets[i] == bucketValue) {
+                            
+                            relaxLightEdges(i, delta, tent, buckets, row, col, val);
+                            buckets[i] = PUT_IN_R;
 
-            int bucket = *std::min_element(policy, buckets, buckets + size);
+                        }
+                    });
+                }).wait();
+                
+                bucket = std::min_element(policy, buckets, buckets + size);
+                q.copy<int>(bucket, &newBucketValue, 1).wait();
+            } while (bucketValue == newBucketValue);
+
+            bucketValue = newBucketValue;
 
             q.submit([&](sycl::handler& h) {
                 h.parallel_for(size, [=](sycl::id<1> i) {
-                        if(buckets[i] == bucket) {
+                    if(buckets[i] == PUT_IN_R) {
+                        relaxHeavyEdges(i, delta, tent, buckets, row, col, val);
+                        buckets[i] = FULLY_RELAXED;
 
-                        for(int j = csr.row[i]; j < csr.row[i+1]; j++) {
-                            if (csr.val[j] < delta) { // light edge
-                                relax(csr.col[j], tent[i] + csr.val[j], delta, tent, buckets)
-                            }
-                            
-                        }
-
-                        buckets[i] =    
-                        }
-                    });
+                    }
                 });
-            };
+            }).wait();
+
+        }   
         
+        std::vector<float> result(size);
+        q.memcpy(result.data(), tent, size * sizeof(float)).wait();
         sycl::free(tent, q);
         sycl::free(buckets, q);
 
-        return std::vector<float>{};
-    };
-
-    void test(sycl::queue&q) {
-
+        return result;
     }
 
 } // namespace algorithms
 
-
-
-
-
-
-//get light and heavy edges
-//reduce to get numbers
-//allocate data for light and heavy edges
-//save indices of light and heavy edges per vertex
-// write edges to light and heavy arrays
