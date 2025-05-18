@@ -12,18 +12,6 @@
 #pragma nv_diag_default 550
 #pragma nv_diagnostic pop
 
-
-// CUDA error-checking macro
-#define CUDA_CHECK(call) \
-    do { \
-        cudaError_t err = call; \
-        if (err != cudaSuccess) { \
-            std::cerr << "CUDA error at " << __FILE__ << ":" << __LINE__ \
-                      << ": " << cudaGetErrorString(err) << std::endl; \
-            std::exit(EXIT_FAILURE); \
-        } \
-    } while (0)
-
 constexpr int kernel_size = 5;
 constexpr int padding     = kernel_size / 2;
 constexpr int coeff       = 273;
@@ -75,15 +63,6 @@ __global__ void gaussianBlur(
     targetData[coord] = out;
 }
 
-inline std::ostream& operator<<(std::ostream& os, const uchar4 &v) {
-    return os << '('
-              << std::setw(3) << static_cast<int>(v.x) << ", "
-              << std::setw(3) << static_cast<int>(v.y) << ", "
-              << std::setw(3) << static_cast<int>(v.z) << ", "
-              << std::setw(3) << static_cast<int>(v.w)
-              << ')';
-}
-
 
 int main() {
 
@@ -111,8 +90,6 @@ int main() {
 
     cudaMallocPitch(&paddedData, &devicePitchInBytes, pitchWithPaddingInBytes, heightWithPadding);
     cudaMallocPitch(&targetData, &targetPitchInBytes, pitchWithPaddingInBytes, heightWithPadding);
-    
-    std::cout << devicePitchInBytes << " " << targetPitchInBytes << " " << pitchWithPaddingInBytes << "\n";
 
     const auto skipTopRows = 2 * (devicePitchInBytes / sizeof(uchar4)) + 2;
     
@@ -130,8 +107,6 @@ int main() {
         (width  + block.x - 1) / block.x,
         (height + block.y - 1) / block.y);
 
-    std::cout << grid.x << " " << grid.y << "\n";
-
     gaussianBlur<<<grid, block>>>(
         paddedData,
         targetData,
@@ -140,27 +115,6 @@ int main() {
         devicePitchInBytes / sizeof(uchar4));
     
     cudaMemcpy2D(host_data, widthInBytes, targetData + skipTopRows, targetPitchInBytes, widthInBytes, height, cudaMemcpyDeviceToHost);
-
-    // uchar4* test = new uchar4[sizeWithPadding];
-    // cudaMemcpy(test, targetData, devicePitchInBytes * heightWithPadding, cudaMemcpyDeviceToHost);
-    // auto w = devicePitchInBytes / sizeof(uchar4);
-    // for(int i = 0; i < heightWithPadding; i++)
-    // {
-    //     for(int j = 0; j < w; j++)
-    //     {
-    //         std::cout << test[ i * w + j]; 
-    //     }
-    //     std::cout << "\n";
-    // }
-
-    // for(int i = 0; i < height; i++)
-    // {
-    //     for(int j = 0; j < width; j++)
-    //     {
-    //         std::cout << host_data[i * width + j];
-    //     }
-    //     std::cout << "\n";
-    // }
 
     stbi_write_bmp("output.bmp", width, height, 4, host_data);
 
