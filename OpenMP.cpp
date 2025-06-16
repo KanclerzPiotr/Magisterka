@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <algorithm>
 #include <vector>
 
@@ -21,6 +22,17 @@ constexpr int kernel[kernel_size * kernel_size] =
        7, 26, 41, 26, 7,
        4, 16, 26, 16, 4,
        1,  4,  7,  4, 1};
+
+std::ostream& operator<<(std::ostream& os, uchar4 const& v) {
+    // print as { r, g, b, a }
+    os << '['
+       << std::setw(3) << static_cast<int>(v.r) << " "
+       << std::setw(3) << static_cast<int>(v.g) << " "
+       << std::setw(3) << static_cast<int>(v.b) << " "
+       << std::setw(3) << static_cast<int>(v.a)
+       << ']';
+    return os;
+}
 
 int main()
 {
