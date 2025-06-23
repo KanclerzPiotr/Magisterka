@@ -1,6 +1,7 @@
-import numpy as np
 from PIL import Image
-from numba import njit, prange
+import numpy as np
+from numba import cuda
+import time
 
 # parameters
 KERNEL_SIZE = 5
@@ -14,72 +15,71 @@ KERNEL = np.array([
     [ 1,  4,  7,  4, 1]
 ], dtype=np.int32)
 
-@njit(parallel=True)
-def pad_image(src, dst, padding):
-    h, w, _ = src.shape
-    hp, wp, _ = dst.shape
-    for i in prange(hp):
-        for j in range(wp):
-            if i >= padding and i < h + padding and j >= padding and j < w + padding:
-                dst[i, j, 0] = src[i - padding, j - padding, 0]
-                dst[i, j, 1] = src[i - padding, j - padding, 1]
-                dst[i, j, 2] = src[i - padding, j - padding, 2]
-                dst[i, j, 3] = src[i - padding, j - padding, 3]
-            else:
-                dst[i, j, 0] = 0
-                dst[i, j, 1] = 0
-                dst[i, j, 2] = 0
-                dst[i, j, 3] = 0
+@cuda.jit
+def copy_pad_image(src, dst, padding):
+    i, j = cuda.grid(2)
+    h, w, _ = dst.shape
+    if i >= padding and i < h - padding and j >= padding and j < w - padding:
+        for c in range(4):
+            dst[i, j, c] = src[i - padding, j - padding, c]
 
-@njit(parallel=True)
-def convolve(padded, out, kernel, coeff, padding):
+
+@cuda.jit
+def convolve(padded, out, kernel, coeff):
+    i, j = cuda.grid(2)
     h, w, _ = out.shape
     ks = kernel.shape[0]
-    for i in prange(h):
-        for j in range(w):
-            r = g = b = a = 0
-            # walk over the kernel window
-            for ky in range(ks):
-                for kx in range(ks):
-                    pix = padded[i + ky, j + kx]
-                    k = kernel[ky, kx]
-                    r += pix[0] * k
-                    g += pix[1] * k
-                    b += pix[2] * k
-                    a += pix[3] * k
-            # normalize
-            out[i, j, 0] = r // coeff
-            out[i, j, 1] = g // coeff
-            out[i, j, 2] = b // coeff
-            out[i, j, 3] = a // coeff
+    r = g = b = a = 0
+    if i < h and j < w:
+        for ky in range(ks):
+            for kx in range(ks):
+                pix = padded[i + ky, j + kx]
+                k = kernel[ky, kx]
+                r += pix[0] * k
+                g += pix[1] * k
+                b += pix[2] * k
+                a += pix[3] * k
+                out[i, j, 0] = r // coeff
+                out[i, j, 1] = g // coeff
+                out[i, j, 2] = b // coeff
+                out[i, j, 3] = a // coeff
 
 def main():
     # load as RGBA
-    img = Image.open("tester.bmp").convert("RGBA")
+    img = Image.open("obraz.bmp").convert("RGBA")
     src = np.array(img, dtype=np.uint8)
     h, w, _ = src.shape
 
+    
+    padded = np.zeros((h + 2* PADDING, w + 2* PADDING, 4), dtype=np.uint8)
 
+    d_padded = cuda.to_device(padded)
+    d_out = cuda.to_device(src)
+    d_kernel = cuda.to_device(KERNEL)
 
-    # allocate padded and output arrays
-    padded = np.zeros((h + 2*PADDING, w + 2*PADDING, 4), dtype=np.uint8)
-    out    = np.zeros_like(src)
+    threadsperblock = (16, 16)
+    blockspergrid_x = (d_padded.shape[0] + threadsperblock[0] - 1) // threadsperblock[0]
+    blockspergrid_y = (d_padded.shape[1] + threadsperblock[1] - 1) // threadsperblock[1]
+    blockspergrid = (blockspergrid_x, blockspergrid_y)
 
-    # first call compiles the functions; subsequent calls are fast
-    pad_image(src, padded, PADDING)
+    copy_pad_image[blockspergrid, threadsperblock](d_out, d_padded, PADDING)
 
+    convolve[blockspergrid, threadsperblock](d_padded, d_out, d_kernel, COEFF)
 
+    out = d_out.copy_to_host()
 
-    convolve(padded, out, KERNEL, COEFF, PADDING)
-
-    for row in out:
-        for x in row:
-            print(x, end="")
-        print("")
-
-    # write result
     result = Image.fromarray(out, mode="RGBA")
     result.save("output.bmp")
 
 if __name__ == "__main__":
+    start = time.perf_counter()
     main()
+    end = time.perf_counter()
+
+    print(f"Execution time: {end - start:.6f} seconds")
+    
+    start = time.perf_counter()
+    main()
+    end = time.perf_counter()
+
+    print(f"Execution time: {end - start:.6f} seconds")
