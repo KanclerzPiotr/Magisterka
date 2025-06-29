@@ -74,9 +74,6 @@ int main() {
 
     const auto pitchWithPadding = width + 2 * padding;
     const auto sizeWithPadding = pitchWithPadding * (height + 2 * padding);
-    // const auto sizeWithoutPadding = width * height;
-    // const auto skipTopRows = pitchWithPadding * 2 + 2;
-    // const auto bytesWithPadding = sizeWithPadding * sizeof(uchar4);
     const auto pitchWithPaddingInBytes = pitchWithPadding * sizeof(uchar4);
     const auto heightWithPadding = height + 2 * padding;
     const auto widthInBytes = width * sizeof(uchar4);
@@ -95,10 +92,6 @@ int main() {
     
     cudaMemset2D(paddedData, devicePitchInBytes, 0, pitchWithPaddingInBytes, heightWithPadding);
     cudaMemcpy2D(paddedData + skipTopRows, devicePitchInBytes, host_data, widthInBytes, widthInBytes, height, cudaMemcpyHostToDevice);
-
-    // cudaMemcpy(targetData, paddedData, devicePitchInBytes * heightWithPadding, cudaMemcpyDeviceToDevice);
- 
-
 
     cudaMemcpyToSymbol(d_kernel, kernel, sizeof(kernel), 0, cudaMemcpyHostToDevice);
 

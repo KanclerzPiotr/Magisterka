@@ -41,7 +41,7 @@ function convolve(
     if i <= h && j <= w
         ip = i + PADDING
         jp = j + PADDING
-        
+
         r = Int32(0)
         g = Int32(0)
         b = Int32(0)
@@ -74,13 +74,13 @@ function convolve(
 end
 
 function main()
-    # Load BMP: yields Array{Colorant,2}; convert to UInt8 H×W×4
     img = load("obraz.bmp")
     H, W = size(img, 1), size(img, 2)
     Hp, Wp   = H+2*PADDING, W+2*PADDING
-    
-    img = map(RGBA, img)
-    d_src = CuArray(img)
+
+    rgba_img = similar(img, RGBA{N0f8}) 
+    map!(RGBA, rgba_img, img) 
+    d_src = CuArray(rgba_img)
     d_padded = CUDA.zeros(RGBA{N0f8}, Hp, Wp )
 
     threads     = (16,16)
@@ -88,13 +88,11 @@ function main()
     conv_blocks = (cld(W,  threads[1]), cld(H,  threads[2]))
 
     @cuda threads=threads blocks=pad_blocks copy_pad_image_kernel_rgba(d_src, d_padded, PADDING)
-    synchronize()
     @cuda threads=threads blocks=conv_blocks convolve(d_padded, d_src, d_kernel)
-    synchronize()
 
     # Retrieve and save
-    out = Array(d_src)         
-    save("output.bmp", out)
+    copyto!(rgba_img, d_src)         
+    save("output.bmp", rgba_img)
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

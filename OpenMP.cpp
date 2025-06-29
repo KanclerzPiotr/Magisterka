@@ -40,28 +40,23 @@ int main()
     uchar4* host_data;
 
     host_data = reinterpret_cast<uchar4*>(
-        stbi_load("tester.bmp", &width, &height, &channels, 4));
+        stbi_load("obraz.bmp", &width, &height, &channels, 4));
 
     const auto widthWithPadding = width + 2 * padding;
     const auto heightWithPadding = height + 2 * padding;
     const auto sizeWithPadding = widthWithPadding * heightWithPadding;
     const auto size = width * height;
-    
 
-    uchar4* paddedData = new uchar4[sizeWithPadding];
-    uchar4* targetData = new uchar4[size];
+    uchar4* paddedData;
 
     #pragma omp target data \
         map(host_data[0:size], kernel[0:kernel_size * kernel_size]) \
         map(width, height, widthWithPadding, heightWithPadding, padding) \
-        map(paddedData[0:sizeWithPadding]) \
-        map(targetData[0:size])
+        map(alloc: paddedData[0:sizeWithPadding]) 
     {
         #pragma omp target teams distribute parallel for
         for(int i = 0; i < heightWithPadding; i++) {
             for(int j = 0; j < widthWithPadding; j++) {
-
-                
                 if(i >= padding && i < heightWithPadding - padding && j >= padding && j < widthWithPadding - padding ) {
                     uchar4 pix = host_data[ (i- padding) * width + (j - padding)];
                     paddedData[i * widthWithPadding + j] = pix;
@@ -91,13 +86,13 @@ int main()
                     }
                 }
                 uchar4 res = {r/coeff, g/coeff, b/coeff, a/coeff};
-                targetData[i* width + j] = res;
+                host_data[i* width + j] = res;
             }
         }
         
     }
 
-    stbi_write_bmp("output.bmp", width, height, 4, targetData);
+    stbi_write_bmp("output.bmp", width, height, 4, host_data);
 
     return 0;
 }

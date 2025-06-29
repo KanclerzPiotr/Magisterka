@@ -94,7 +94,7 @@ inline std::ostream& operator<<(std::ostream& os, const cl_uchar4 &v) {
 int main() {
     int width, height, channels;
     cl_uchar4* host_data = reinterpret_cast<cl_uchar4*>(
-        stbi_load("tester.bmp", &width, &height, &channels, 4));
+        stbi_load("obraz.bmp", &width, &height, &channels, 4));
 
 
     auto widthInBytes = width * sizeof(cl_uchar4);

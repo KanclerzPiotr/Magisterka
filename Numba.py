@@ -50,7 +50,6 @@ def main():
     src = np.array(img, dtype=np.uint8)
     h, w, _ = src.shape
 
-    
     padded = np.zeros((h + 2* PADDING, w + 2* PADDING, 4), dtype=np.uint8)
 
     d_padded = cuda.to_device(padded)
@@ -72,14 +71,4 @@ def main():
     result.save("output.bmp")
 
 if __name__ == "__main__":
-    start = time.perf_counter()
     main()
-    end = time.perf_counter()
-
-    print(f"Execution time: {end - start:.6f} seconds")
-    
-    start = time.perf_counter()
-    main()
-    end = time.perf_counter()
-
-    print(f"Execution time: {end - start:.6f} seconds")
